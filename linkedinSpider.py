@@ -5,7 +5,7 @@
 # 作者：九茶<http://blog.csdn.net/bone_ace>
 # 功能：根据公司名称抓取员工的LinkedIn数据
 # ----------------------------------------
-hhaha
+
 import sys
 import copy
 from urllib import unquote
@@ -443,7 +443,7 @@ if __name__ == '__main__':
     file.close()
     for company_name in Company_Name:
         # 启动mySQL
-        conn = pymysql.connect(host='127.0.0.1', user='root', password='123456', db='company', charset="utf8")
+        conn = pymysql.connect(host='192.168.61.43', user='redwolf', password='123456', db='company', charset="utf8")
         cur = conn.cursor()
         sqlc = '''
                                     create table %s(
