@@ -436,13 +436,13 @@ if __name__ == '__main__':
     # title_now = raw_input('Input the title of whom you want to crawl:')
     failure_time = 0
     change_login_threshold = 0
+    exist_page = 0
     try:
 	file = open('历史记录', 'r')
     	for line in file:
         	exist_page += line.count('true', 0, len(line))
     except:
 	file = open('历史记录', 'w')
-	exist_page = 0
     file.close()
     for company_name in Company_Name:
         # 启动mySQL
