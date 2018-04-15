@@ -5,7 +5,7 @@
 # 作者：九茶<http://blog.csdn.net/bone_ace>
 # 功能：根据公司名称抓取员工的LinkedIn数据
 # ----------------------------------------
-haha
+
 import sys
 import copy
 from urllib import unquote
