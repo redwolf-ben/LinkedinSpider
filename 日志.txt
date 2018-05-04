@@ -1,0 +1,99 @@
+=======================================================================================================
+2018年4月17日
+Libsvm的多分类问题采用一对一方式，其中支持向量是共享的，即类别A与B或C分类时，属于A的支持向量只有一组，而不用专门为B或C准备两套不同的支持向量，url:https://www.csie.ntu.edu.tw/~cjlin/libsvm/faq.html#f426	以下是官方原文：
+	Q: How does LIBSVM perform parameter selection for multi-class problems? 
+	LIBSVM implements "one-against-one" multi-class method, so there are k(k-1)/2 binary models, where k is the number of classes.
+
+	We can consider two ways to conduct parameter selection.
+
+		For any two classes of data, a parameter selection procedure is conducted. Finally, each decision function has its own optimal parameters.
+		The same parameters are used for all k(k-1)/2 binary classification problems. We select parameters that achieve the highest overall performance.
+	Each has its own advantages. A single parameter set may not be uniformly good for all k(k-1)/2 decision functions. However, as the overall accuracy is the final consideration, one parameter set for one decision function may lead to over-fitting. In the paper
+	Chen, Lin, and Schölkopf, A tutorial on nu-support vector machines. Applied Stochastic Models in Business and Industry, 21(2005), 111-136,
+
+	they have experimentally shown that the two methods give similar performance. Therefore, currently the parameter selection in LIBSVM takes the second approach by considering the same parameters for all k(k-1)/2 models.
+
+probA和probB解释，url:https://blog.csdn.net/funny75/article/details/50154391	
+属于某一类的概率值为1/(1+sigmoid(Ax+B)+sigmoid(Ax+B)+sigmoid(...)...),sigmoid的个数为类别个数-1，比如三分类，属于第一类的概率就是1/(1+sigmoid(第一类和第二类比)+sigmoid(第一类和第三类比))
+
+
+=======================================================================================================
+2018年4月15日
+在tf-idf基础上增加了一个新的考量————类间不均衡程度。某些词，如“天气、空调”等，本身词频很高，但不代表无用，而有些词如“的、吗”词频高并且也无用，它们之间的区别在于无用词不但高频而且分布均匀，有用词虽然高频但是分布不均匀，因此加入类间不均衡这一统计量可以有效的给予那些与类别强相关的词的重视。代码修改于'src/com/haier/classifier/feature/FeatureSelector.java 79、126、141和175行'。计算var
+	添加完代码：
+	        double[] labelVar = new double[nClasses];		//统计一个词在每一类中的词频
+
+	        labelVar[j] = A / ((float) A + C);  // 添加词频方差值，修改于2018年4月10日，马奔
+
+	       	w.var = Variance(labelVar, nClasses);   //求这个词在每一类内部的词频，然后求这些词频的方差，衡量这个词的不均匀程度
+			
+	       	double Variance(double[] labelVar, int n) {
+	    		double mean = 0;
+	    		double var = 0;
+	    		for (int i = 0; i < n; i++) {
+	        		mean += labelVar[i];
+        		}
+        		mean /= n;
+        		for (int i = 0; i < n; i++) {
+	        		var += Math.pow(labelVar[i] - mean, 2);
+        		}
+        		return var * 1000000000;//乘以100...是为了使得var大于1，开根号不会增大。此处可以更改优化
+    		}	
+
+以及'src/com/haier/classifier/text/SVMClassifier.java 113至179行'。计算加入var之后的权重
+	
+	源代码：
+			double df = lexicon.getWord(word.id).df;  //bug fix df调用 // (20180314 宫兴强)
+			double tf_idf = Math.log( tf + 1 ) * ( Math.log( (double) lexicon.getNumDocs() / df + 1 ) );  //使用df
+			normalizer += tf_idf * tf_idf;
+			featuresNew_temp[featureCount].id = id;
+			featuresNew_temp[featureCount].weight = tf_idf;
+
+	修改完代码：
+			double freqDf = lexicon.getWord(word.id).freqDf;
+			double tf_idf = Math.log( tf + 1 ) *  Math.log( (double) nClasses / freqDf) ;  //使用freqDf，详见本日志前一条2018年4月10日说明
+			double tf_idf_var = tf_idf * (Math.pow(lexicon.getWord(word.id).var, 1.0 / 8)); //上一步计算出来的var在这里开了8次方，以减缓增长速度
+			normalizer += tf_idf_var * tf_idf_var;
+			featuresNew_temp[featureCount].id = id;
+			featuresNew_temp[featureCount].weight = tf_idf_var;
+
+
+=======================================================================================================
+2018年4月10日
+修改了df的计算方式，原先的df统计的是全局的频数，而由于类之间的数量不平衡，有些类的基数本身就比较大，该类的词在计算df时就有先天的劣势，解决办法是计算该类词在该类中出现的频率，统计其在所有类中出现的频率之和作为新的df。代码修改于'src/com/haier/classifier/feature/FeatureSelector.java 79、126、142和188行'。
+	添加完代码：
+	        double[] labelVar = new double[nClasses];		//统计一个词在每一类中的词频
+
+	        labelVar[j] = A / ((float) A + C);  // 添加词频方差值，修改于2018年4月10日，马奔
+
+	       	w.freqDf = sum(labelVar);    //  freqDf为频率统计而不是频数统计
+
+	       	double sum(double[] labelVar) {
+	    		double sum = 0;
+	    		for (double labelvar : labelVar) {
+	        		sum += labelvar;
+        		}
+        		return  sum;
+    		}		
+
+
+=======================================================================================================
+2018年4月5日
+使用LibSVM中的松弛变量和惩罚因子来解决数据不均衡的问题，url:https://blog.csdn.net/smilehehe110/article/details/53469783		总体来说，这里的C越大，准确率越高，也越容易过拟合，C越小，准确率越低，泛化能力越强，应找到一个合适的平衡点。	
+	惩罚因子的超参在代码'src/com/haier/classifier/text/SVMClassifier.java 191行'里面，其中param.C为惩罚项系数，单独使用时就是为每一类设置相同的惩罚系数，配合param.weight时就是C乘上weight的结果作为每一类的惩罚系数。-c cost：设置C-SVC、ε-SVR、n - SVR中的惩罚系数C，默认值为1；-wi weight：对各类样本的惩罚系数C加权，默认值为1；
+	源代码：
+			param.C = 2;//惩罚项系数
+            param.weight_label = new int[0];
+            param.weight = new double[0]; 
+            
+    修改完代码：
+    		param.C = 2;//惩罚项系数
+
+            int[] weght_label = new int[8];
+            String[] my_string = new String[]{"command", "other", "schedule", "audioVideo", "weather", "knowledge", "recipe", "news"};
+            for(int i = 0; i < 8; i++){
+                weght_label[i] = label2Index.get(my_string[i]); } //使得label和下面的weight对应上
+
+            param.weight_label = weght_label;
+            param.weight = new double[]{0.1,0.4,0.75,1.5,1.85,1.43,2.2,3.16}
+
